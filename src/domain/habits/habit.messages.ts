@@ -93,7 +93,21 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+const streakMilestones: Record<number, string> = {
+  7: "A WHOLE WEEK?! Who ARE you?!",
+  14: "Two weeks strong. You're scaring the other habits.",
+  21: "21 days. Scientists say it's a habit now. The app says prove it.",
+  30: "30-day streak. That's not discipline, that's an obsession. Respect.",
+  50: "50 DAYS. You're no longer a person, you're a machine.",
+  100: "100 DAYS. Legend. Icon. Possibly unhinged. We salute you.",
+  365: "A FULL YEAR. The app is not worthy. We bow.",
+};
+
 export function getMessage(ctx: MessageContext): string {
+  // Check for streak milestones on completion
+  if (ctx.category === 'complete' && streakMilestones[ctx.currentStreak]) {
+    return streakMilestones[ctx.currentStreak];
+  }
   const pool = messagePools[ctx.category];
   const template = pickRandom(pool);
   return template(ctx);

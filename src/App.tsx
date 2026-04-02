@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useHabits } from './hooks/useHabits';
 import { useTheme } from './hooks/useTheme';
 import { HabitCard } from './components/HabitCard';
@@ -6,6 +6,7 @@ import { HabitForm } from './components/HabitForm';
 import { EmptyState } from './components/EmptyState';
 import { Dashboard } from './components/Dashboard';
 import { DeletedHabits } from './components/DeletedHabits';
+import { SkeletonCards } from './components/SkeletonCards';
 import type { Habit } from './domain/habits/habit.types';
 
 function App() {
@@ -36,6 +37,53 @@ function App() {
   const toggleCollapse = (id: string) => {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
   };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'Escape') {
+        setShowForm(false);
+        setShowDashboard(false);
+        setShowDeletedHabits(false);
+        setEditingHabit(null);
+        setShowMenu(false);
+      } else if (e.key === 'n' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setShowForm(true);
+      } else if (e.key === 'd' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        if (habits.length > 0) setShowDashboard(true);
+      } else if (e.key === 't' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        toggle();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [habits.length, toggle]);
+
+  const allDoneToday = !loading && habits.length > 0 && habits.every(h => getTodayCount(h) >= h.dailyTarget);
+  const doneCount = habits.filter(h => getTodayCount(h) >= h.dailyTarget).length;
+
+  // Dynamic page title
+  useEffect(() => {
+    if (loading || habits.length === 0) {
+      document.title = 'Streak';
+    } else {
+      document.title = `${doneCount}/${habits.length} done | Streak`;
+    }
+  }, [loading, habits, doneCount]);
+
+  const ALL_DONE_MESSAGES = [
+    "You absolute machine. Every habit done.",
+    "100% today. The algorithm is shook.",
+    "All habits crushed. You may now rest (you won't).",
+    "Perfect day. Screenshot it. Nobody will believe you.",
+    "Clean sweep. Your future self just sent a thank-you note.",
+  ];
+  const [allDoneMsg] = useState(() => ALL_DONE_MESSAGES[Math.floor(Math.random() * ALL_DONE_MESSAGES.length)]);
 
   const handleAdd = (name: string, target: number, color?: string) => {
     addHabit(name, target, color);
@@ -222,14 +270,20 @@ function App() {
       {/* Main content */}
       <main className="max-w-2xl mx-auto px-4 py-6">
         {loading ? (
-          <div className="text-center py-16 text-stone-400 dark:text-stone-500 text-sm">Loading...</div>
+          <SkeletonCards />
         ) : habits.length === 0 ? (
           <EmptyState onAdd={() => setShowForm(true)} />
         ) : (
           <div className="space-y-3">
-            {habits.map((habit) => (
+            {allDoneToday && (
+              <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-xl p-4 text-center text-white shadow-lg animate-pulse">
+                <div className="text-2xl mb-1">&#127881;</div>
+                <div className="font-bold text-lg">{allDoneMsg}</div>
+              </div>
+            )}
+            {habits.map((habit, index) => (
+              <div key={habit.id} className="animate-card-enter" style={{ animationDelay: `${index * 0.06}s` }}>
               <HabitCard
-                key={habit.id}
                 habit={habit}
                 todayCount={getTodayCount(habit)}
                 message={messages[habit.id]}
@@ -241,6 +295,7 @@ function App() {
                 onDelete={() => deleteHabit(habit.id)}
                 onSetDayCount={(date, count) => setDayCount(habit.id, date, count)}
               />
+              </div>
             ))}
           </div>
         )}

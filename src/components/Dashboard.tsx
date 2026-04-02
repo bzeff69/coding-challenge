@@ -29,11 +29,13 @@ export function Dashboard({ habits, deletedHabits, onClose }: DashboardProps) {
   const [printing, setPrinting] = useState(false);
 
   const handleExportPdf = useCallback(() => {
+    const wasDark = document.documentElement.classList.contains('dark');
+    if (wasDark) document.documentElement.classList.remove('dark');
     setPrinting(true);
-    // Give React a tick to apply the print class, then trigger print
     setTimeout(() => {
       window.print();
       setPrinting(false);
+      if (wasDark) document.documentElement.classList.add('dark');
     }, 100);
   }, []);
   const last30 = getLastNDates(today, 30);
