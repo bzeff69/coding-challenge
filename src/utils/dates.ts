@@ -43,3 +43,14 @@ export function getDayLabel(dateStr: DateString): string {
   const d = parseDateString(dateStr);
   return d.toLocaleDateString('en-US', { weekday: 'short' });
 }
+
+export function offsetDateString(date: DateString, days: number): DateString {
+  const d = parseDateString(date);
+  d.setDate(d.getDate() + days);
+  return formatDate(d);
+}
+
+export function formatShortDate(dateStr: DateString): string {
+  const d = parseDateString(dateStr);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}

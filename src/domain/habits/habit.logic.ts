@@ -1,11 +1,12 @@
 import type { Habit, HabitDayRecord, DateString } from './habit.types';
 import { getYesterdayDateString, getNextDateString } from '../../utils/dates';
 
-export function createHabit(name: string, dailyTarget: number): Habit {
+export function createHabit(name: string, dailyTarget: number, color?: string): Habit {
   return {
     id: crypto.randomUUID(),
     name,
     dailyTarget: Math.max(1, Math.min(10, dailyTarget)),
+    color,
     createdAt: new Date().toISOString(),
     currentStreak: 0,
     longestStreak: 0,
@@ -179,6 +180,20 @@ export function undoHabit(habit: Habit, today: DateString): UndoResult {
     newCount: record.count,
     dailyTarget: habit.dailyTarget,
   };
+}
+
+export function setDayCount(habit: Habit, date: DateString, count: number, today: DateString): void {
+  const clamped = Math.max(0, Math.min(habit.dailyTarget, count));
+  if (clamped === 0) {
+    delete habit.dayRecords[date];
+  } else {
+    if (!habit.dayRecords[date]) {
+      habit.dayRecords[date] = { date, count: 0, completed: false };
+    }
+    habit.dayRecords[date].count = clamped;
+    habit.dayRecords[date].completed = clamped >= habit.dailyTarget;
+  }
+  recalculateHabitStats(habit, today);
 }
 
 export function getCompletionRate(habit: Habit): number {

@@ -4,6 +4,7 @@ import {
   createHabit,
   incrementHabit,
   undoHabit,
+  setDayCount as setDayCountLogic,
   processMissedDays,
   recalculateHabitStats,
 } from '../domain/habits/habit.logic';
@@ -83,8 +84,8 @@ export function useHabits() {
     }));
   }, []);
 
-  const addHabit = useCallback((name: string, dailyTarget: number) => {
-    const habit = createHabit(name, dailyTarget);
+  const addHabit = useCallback((name: string, dailyTarget: number, color?: string) => {
+    const habit = createHabit(name, dailyTarget, color);
     setState((prev) => ({
       ...prev,
       habits: [...prev.habits, habit],
@@ -92,7 +93,7 @@ export function useHabits() {
   }, []);
 
   const editHabit = useCallback(
-    (id: string, name: string, dailyTarget: number) => {
+    (id: string, name: string, dailyTarget: number, color?: string) => {
       const today = getTodayDateString();
       setState((prev) => ({
         ...prev,
@@ -102,6 +103,7 @@ export function useHabits() {
             ...h,
             name,
             dailyTarget: Math.max(1, Math.min(10, dailyTarget)),
+            color,
             dayRecords: { ...h.dayRecords },
           };
           // Recalculate completion status for all records with new target
@@ -119,10 +121,15 @@ export function useHabits() {
   );
 
   const deleteHabit = useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      habits: prev.habits.filter((h) => h.id !== id),
-    }));
+    setState((prev) => {
+      const habit = prev.habits.find((h) => h.id === id);
+      const deleted = prev.deletedHabits ?? [];
+      return {
+        ...prev,
+        habits: prev.habits.filter((h) => h.id !== id),
+        deletedHabits: habit ? [...deleted, habit] : deleted,
+      };
+    });
     setMessages((prev) => {
       const next = { ...prev };
       delete next[id];
@@ -200,6 +207,45 @@ export function useHabits() {
     [setMessage]
   );
 
+  const setDayCount = useCallback(
+    (id: string, date: string, count: number) => {
+      const today = getTodayDateString();
+      setState((prev) => {
+        const habits = prev.habits.map((h) => {
+          if (h.id !== id) return h;
+          const clone: Habit = { ...h, dayRecords: { ...h.dayRecords } };
+          if (clone.dayRecords[date]) {
+            clone.dayRecords[date] = { ...clone.dayRecords[date] };
+          }
+          setDayCountLogic(clone, date, count, today);
+          return clone;
+        });
+        return { ...prev, habits };
+      });
+    },
+    []
+  );
+
+  const restoreHabit = useCallback((id: string) => {
+    setState((prev) => {
+      const deleted = prev.deletedHabits ?? [];
+      const habit = deleted.find((h) => h.id === id);
+      if (!habit) return prev;
+      return {
+        ...prev,
+        habits: [...prev.habits, habit],
+        deletedHabits: deleted.filter((h) => h.id !== id),
+      };
+    });
+  }, []);
+
+  const permanentlyDeleteHabit = useCallback((id: string) => {
+    setState((prev) => ({
+      ...prev,
+      deletedHabits: (prev.deletedHabits ?? []).filter((h) => h.id !== id),
+    }));
+  }, []);
+
   const getTodayCount = useCallback(
     (habit: Habit): number => {
       const today = getTodayDateString();
@@ -210,13 +256,17 @@ export function useHabits() {
 
   return {
     habits: state.habits,
+    deletedHabits: state.deletedHabits ?? [],
     messages,
     missedHabits,
     addHabit,
     editHabit,
     deleteHabit,
+    restoreHabit,
+    permanentlyDeleteHabit,
     increment,
     undo,
+    setDayCount,
     getTodayCount,
   };
 }

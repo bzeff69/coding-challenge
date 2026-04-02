@@ -10,6 +10,7 @@ export interface Habit {
   id: string;
   name: string;
   dailyTarget: number;
+  color?: string;
   createdAt: string; // ISO date-time
   currentStreak: number;
   longestStreak: number;
@@ -20,6 +21,7 @@ export interface Habit {
 
 export interface AppState {
   habits: Habit[];
+  deletedHabits?: Habit[];
   lastOpenedDate?: DateString;
 }
 

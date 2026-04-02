@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --heat-empty: #e7e5e4;
+  --heat-low: #a5b4fc;
+  --heat-mid: #6366f1;
+  --heat-full: #4338ca;
+}
+
+.dark {
+  --heat-empty: #292524;
+  --heat-low: #3730a3;
+  --heat-mid: #6366f1;
+  --heat-full: #818cf8;
+}
