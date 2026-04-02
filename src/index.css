@@ -15,3 +15,24 @@
   --heat-mid: #6366f1;
   --heat-full: #818cf8;
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  [data-print-area],
+  [data-print-area] * {
+    visibility: visible;
+  }
+  [data-print-area] {
+    position: absolute;
+    inset: 0;
+    background: white;
+    padding: 24px;
+    overflow: visible;
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
