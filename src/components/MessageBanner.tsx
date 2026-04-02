@@ -3,7 +3,7 @@ import type { HabitMessage } from '../hooks/useHabits';
 
 export function MessageBanner({ message }: { message?: HabitMessage }) {
   const [flash, setFlash] = useState(false);
-  const prevTimestamp = useRef<number | undefined>();
+  const prevTimestamp = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (!message || message.timestamp === prevTimestamp.current) return;
