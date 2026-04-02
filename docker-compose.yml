@@ -1,0 +1,17 @@
+services:
+  api:
+    build: ./api
+    ports:
+      - "5001:5000"
+    volumes:
+      - habit_data:/app/data
+
+  frontend:
+    build: .
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+volumes:
+  habit_data:

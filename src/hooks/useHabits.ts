@@ -1,16 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { Habit, AppState } from '../domain/habits/habit.types';
-import {
-  createHabit,
-  incrementHabit,
-  undoHabit,
-  setDayCount as setDayCountLogic,
-  processMissedDays,
-  recalculateHabitStats,
-} from '../domain/habits/habit.logic';
+import type { Habit } from '../domain/habits/habit.types';
 import { getMessage } from '../domain/habits/habit.messages';
-import { loadState, saveState } from '../domain/habits/habit.storage';
 import { getTodayDateString } from '../utils/dates';
+import { api, type StateResponse } from '../api/client';
 
 export interface HabitMessage {
   habitId: string;
@@ -19,63 +11,47 @@ export interface HabitMessage {
 }
 
 export function useHabits() {
-  const [state, setState] = useState<AppState>(() => {
-    const loaded = loadState();
-    const today = getTodayDateString();
-
-    // Process missed days on load
-    for (const habit of loaded.habits) {
-      processMissedDays(habit, today);
-      recalculateHabitStats(habit, today);
-    }
-    loaded.lastOpenedDate = today;
-
-    return loaded;
-  });
-
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [deletedHabits, setDeletedHabits] = useState<Habit[]>([]);
   const [messages, setMessages] = useState<Record<string, HabitMessage>>({});
   const [missedHabits, setMissedHabits] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
 
-  // Detect missed days on initial load
-  useEffect(() => {
-    const loaded = loadState();
-    const today = getTodayDateString();
-    const missed = new Set<string>();
-
-    for (const habit of loaded.habits) {
-      const hadMissed = processMissedDays(habit, today);
-      if (hadMissed) {
-        missed.add(habit.id);
-      }
-    }
-
-    if (missed.size > 0) {
-      setMissedHabits(missed);
-      const newMessages: Record<string, HabitMessage> = {};
-      for (const id of missed) {
-        const habit = loaded.habits.find((h) => h.id === id);
-        if (habit) {
-          newMessages[id] = {
-            habitId: id,
-            text: getMessage({
-              category: 'missed',
-              count: 0,
-              dailyTarget: habit.dailyTarget,
-              currentStreak: 0,
-              habitName: habit.name,
-            }),
-            timestamp: Date.now(),
-          };
-        }
-      }
-      setMessages(newMessages);
-    }
+  const applyState = useCallback((res: StateResponse) => {
+    setHabits(res.habits);
+    setDeletedHabits(res.deletedHabits);
   }, []);
 
-  // Save whenever state changes
+  // Load initial state from API
   useEffect(() => {
-    saveState(state);
-  }, [state]);
+    api.getState().then((res) => {
+      applyState(res);
+
+      if (res.missedHabitIds.length > 0) {
+        setMissedHabits(new Set(res.missedHabitIds));
+        const newMessages: Record<string, HabitMessage> = {};
+        for (const id of res.missedHabitIds) {
+          const habit = res.habits.find((h) => h.id === id);
+          if (habit) {
+            newMessages[id] = {
+              habitId: id,
+              text: getMessage({
+                category: 'missed',
+                count: 0,
+                dailyTarget: habit.dailyTarget,
+                currentStreak: 0,
+                habitName: habit.name,
+              }),
+              timestamp: Date.now(),
+            };
+          }
+        }
+        setMessages(newMessages);
+      }
+
+      setLoading(false);
+    });
+  }, [applyState]);
 
   const setMessage = useCallback((habitId: string, text: string) => {
     setMessages((prev) => ({
@@ -84,167 +60,103 @@ export function useHabits() {
     }));
   }, []);
 
-  const addHabit = useCallback((name: string, dailyTarget: number, color?: string) => {
-    const habit = createHabit(name, dailyTarget, color);
-    setState((prev) => ({
-      ...prev,
-      habits: [...prev.habits, habit],
-    }));
-  }, []);
+  const addHabit = useCallback(
+    (name: string, dailyTarget: number, color?: string) => {
+      api.addHabit(name, dailyTarget, color).then(applyState).catch(() => {});
+    },
+    [applyState]
+  );
 
   const editHabit = useCallback(
     (id: string, name: string, dailyTarget: number, color?: string) => {
-      const today = getTodayDateString();
-      setState((prev) => ({
-        ...prev,
-        habits: prev.habits.map((h) => {
-          if (h.id !== id) return h;
-          const updated = {
-            ...h,
-            name,
-            dailyTarget: Math.max(1, Math.min(10, dailyTarget)),
-            color,
-            dayRecords: { ...h.dayRecords },
-          };
-          // Recalculate completion status for all records with new target
-          for (const key of Object.keys(updated.dayRecords)) {
-            const rec = { ...updated.dayRecords[key] };
-            rec.completed = rec.count >= updated.dailyTarget;
-            updated.dayRecords[key] = rec;
-          }
-          recalculateHabitStats(updated, today);
-          return updated;
-        }),
-      }));
+      api.editHabit(id, name, dailyTarget, color).then(applyState).catch(() => {});
     },
-    []
+    [applyState]
   );
 
-  const deleteHabit = useCallback((id: string) => {
-    setState((prev) => {
-      const habit = prev.habits.find((h) => h.id === id);
-      const deleted = prev.deletedHabits ?? [];
-      return {
-        ...prev,
-        habits: prev.habits.filter((h) => h.id !== id),
-        deletedHabits: habit ? [...deleted, habit] : deleted,
-      };
-    });
-    setMessages((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-  }, []);
+  const deleteHabit = useCallback(
+    (id: string) => {
+      api.deleteHabit(id).then((res) => {
+        applyState(res);
+        setMessages((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      }).catch(() => {});
+    },
+    [applyState]
+  );
 
   const increment = useCallback(
     (id: string) => {
-      const today = getTodayDateString();
-      setState((prev) => {
-        const habits = prev.habits.map((h) => {
-          if (h.id !== id) return h;
-          const clone: Habit = {
-            ...h,
-            dayRecords: { ...h.dayRecords },
-          };
-          // Deep clone current day record if exists
-          if (clone.dayRecords[today]) {
-            clone.dayRecords[today] = { ...clone.dayRecords[today] };
-          }
-          const result = incrementHabit(clone, today);
-
-          const category = result.wasCompleted ? 'complete' : 'progress';
+      api.increment(id).then((res) => {
+        applyState(res);
+        const today = getTodayDateString();
+        const habit = res.habits.find((h) => h.id === id);
+        if (habit) {
+          const record = habit.dayRecords[today];
+          const category = record?.completed ? 'complete' : 'progress';
           setMessage(
             id,
             getMessage({
               category,
-              count: result.newCount,
-              dailyTarget: result.dailyTarget,
-              currentStreak: clone.currentStreak,
-              habitName: clone.name,
+              count: record?.count ?? 0,
+              dailyTarget: habit.dailyTarget,
+              currentStreak: habit.currentStreak,
+              habitName: habit.name,
             })
           );
-
-          return clone;
-        });
-        return { ...prev, habits };
-      });
+        }
+      }).catch(() => {});
     },
-    [setMessage]
+    [applyState, setMessage]
   );
 
   const undo = useCallback(
     (id: string) => {
-      const today = getTodayDateString();
-      setState((prev) => {
-        const habits = prev.habits.map((h) => {
-          if (h.id !== id) return h;
-          const clone: Habit = {
-            ...h,
-            dayRecords: { ...h.dayRecords },
-          };
-          if (clone.dayRecords[today]) {
-            clone.dayRecords[today] = { ...clone.dayRecords[today] };
-          }
-          const result = undoHabit(clone, today);
-
+      api.undo(id).then((res) => {
+        applyState(res);
+        const today = getTodayDateString();
+        const habit = res.habits.find((h) => h.id === id);
+        if (habit) {
+          const record = habit.dayRecords[today];
           setMessage(
             id,
             getMessage({
               category: 'undo',
-              count: result.newCount,
-              dailyTarget: result.dailyTarget,
-              currentStreak: clone.currentStreak,
-              habitName: clone.name,
+              count: record?.count ?? 0,
+              dailyTarget: habit.dailyTarget,
+              currentStreak: habit.currentStreak,
+              habitName: habit.name,
             })
           );
-
-          return clone;
-        });
-        return { ...prev, habits };
-      });
+        }
+      }).catch(() => {});
     },
-    [setMessage]
+    [applyState, setMessage]
   );
 
   const setDayCount = useCallback(
     (id: string, date: string, count: number) => {
-      const today = getTodayDateString();
-      setState((prev) => {
-        const habits = prev.habits.map((h) => {
-          if (h.id !== id) return h;
-          const clone: Habit = { ...h, dayRecords: { ...h.dayRecords } };
-          if (clone.dayRecords[date]) {
-            clone.dayRecords[date] = { ...clone.dayRecords[date] };
-          }
-          setDayCountLogic(clone, date, count, today);
-          return clone;
-        });
-        return { ...prev, habits };
-      });
+      api.setDayCount(id, date, count).then(applyState).catch(() => {});
     },
-    []
+    [applyState]
   );
 
-  const restoreHabit = useCallback((id: string) => {
-    setState((prev) => {
-      const deleted = prev.deletedHabits ?? [];
-      const habit = deleted.find((h) => h.id === id);
-      if (!habit) return prev;
-      return {
-        ...prev,
-        habits: [...prev.habits, habit],
-        deletedHabits: deleted.filter((h) => h.id !== id),
-      };
-    });
-  }, []);
+  const restoreHabit = useCallback(
+    (id: string) => {
+      api.restoreHabit(id).then(applyState).catch(() => {});
+    },
+    [applyState]
+  );
 
-  const permanentlyDeleteHabit = useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      deletedHabits: (prev.deletedHabits ?? []).filter((h) => h.id !== id),
-    }));
-  }, []);
+  const permanentlyDeleteHabit = useCallback(
+    (id: string) => {
+      api.permanentlyDeleteHabit(id).then(applyState).catch(() => {});
+    },
+    [applyState]
+  );
 
   const getTodayCount = useCallback(
     (habit: Habit): number => {
@@ -255,10 +167,11 @@ export function useHabits() {
   );
 
   return {
-    habits: state.habits,
-    deletedHabits: state.deletedHabits ?? [],
+    habits,
+    deletedHabits,
     messages,
     missedHabits,
+    loading,
     addHabit,
     editHabit,
     deleteHabit,

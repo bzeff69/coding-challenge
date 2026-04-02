@@ -137,7 +137,7 @@ export function HistoryStrip({ habit, onSetDayCount, onShowFullHistory }: Histor
                 }`}
                 style={
                   currentCount(editingDate) === i
-                    ? { backgroundColor: i >= habit.dailyTarget ? '#10b981' : i > 0 ? color.bg : undefined, ringColor: i > 0 ? color.bg : undefined }
+                    ? { backgroundColor: i >= habit.dailyTarget ? '#10b981' : i > 0 ? color.bg : undefined, '--tw-ring-color': i > 0 ? color.bg : undefined } as React.CSSProperties
                     : undefined
                 }
               >

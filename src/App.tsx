@@ -22,6 +22,7 @@ function App() {
     undo,
     setDayCount,
     getTodayCount,
+    loading,
   } = useHabits();
 
   const { theme, toggle } = useTheme();
@@ -185,7 +186,9 @@ function App() {
 
       {/* Main content */}
       <main className="max-w-2xl mx-auto px-4 py-6">
-        {habits.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-16 text-stone-400 dark:text-stone-500 text-sm">Loading...</div>
+        ) : habits.length === 0 ? (
           <EmptyState onAdd={() => setShowForm(true)} />
         ) : (
           <div className="space-y-3">

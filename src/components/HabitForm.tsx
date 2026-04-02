@@ -91,8 +91,8 @@ export function HabitForm({ onSubmit, onCancel, editingHabit }: HabitFormProps) 
                 className={`w-8 h-8 rounded-full transition-all ${selected ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-stone-900' : 'hover:scale-110'}`}
                 style={{
                   backgroundColor: cfg.swatch,
-                  ringColor: selected ? cfg.swatch : undefined,
-                }}
+                  '--tw-ring-color': selected ? cfg.swatch : undefined,
+                } as React.CSSProperties}
                 title={cfg.name}
               />
             );
