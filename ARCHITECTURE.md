@@ -14,9 +14,9 @@ Streak is a full-stack web application with a React SPA frontend, an ASP.NET Cor
                     |  |  /api/* --> proxy     |--+---> :5000
                     |  +---------------------+  |        |
                     |                           |  +-----v-----------+
-                    |                           |  |  ASP.NET Core   |
-                    |                           |  |  Minimal API    |
-                    |                           |  |  9 endpoints    |
+                     |                           |  |  ASP.NET Core   |
+                     |                           |  |  Minimal API    |
+                     |                           |  | auth + habits   |
                     |                           |  +-----+-----------+
                     |                           |        |
                     |                           |  +-----v-----------+
@@ -41,6 +41,7 @@ Streak is a full-stack web application with a React SPA frontend, an ASP.NET Cor
 ```
 App
  ├── Header (logo, nav, mobile menu, theme toggle)
+ ├── AuthForm                   (login/register screen)
  ├── SkeletonCards              (loading state)
  ├── EmptyState                 (no habits)
  ├── HabitCard[]                (main UI)
@@ -64,6 +65,7 @@ All app state lives in the **`useHabits`** hook, which owns:
 - `messages` — per-habit funny messages (keyed by habit ID)
 - `missedHabits` — set of habit IDs that missed days since last load
 - `loading` — initial fetch state
+- Session state from `useAuth()` gates all habit data requests
 
 **Data flow pattern:** Fire-and-forget API calls. Every user action (increment, undo, edit, delete) fires an API request, and the response replaces local state. No optimistic updates — the server is the source of truth.
 
@@ -89,11 +91,12 @@ User Action → api.increment(id)
 ### Hooks
 | Hook | Purpose |
 |---|---|
+| `useAuth()` | Session restore/login/register/logout |
 | `useHabits()` | All habit state + API mutations |
 | `useTheme()` | Dark/light mode with system detection + localStorage persistence |
 
 ### API Client (`src/api/client.ts`)
-Thin typed fetch wrapper over 9 endpoints. All methods return `Promise<StateResponse>` (the full state after mutation). Base URL is `/api`, proxied by nginx in production and Vite dev proxy in development.
+Thin typed fetch wrapper over the auth + habit endpoints. Habit mutations return `Promise<StateResponse>`, while auth endpoints return the current user or clear the active session. Base URL is `/api`, proxied by nginx in production and Vite dev proxy in development.
 
 ### Styling & Theming
 - Tailwind CSS v4 with `@custom-variant dark (&:is(.dark *))` — dark mode via class on `<html>`
@@ -108,12 +111,17 @@ Thin typed fetch wrapper over 9 endpoints. All methods return `Promise<StateResp
 ### Stack
 - **ASP.NET Core 8** Minimal API
 - **SQLite** via `Microsoft.Data.Sqlite`
+- Session cookie auth backed by PBKDF2 password hashes and hashed session tokens
 - Runs on port 5000 inside the container
 
 ### API Endpoints
 | Method | Route | Description |
 |---|---|---|
-| GET | `/api/state` | Load full state, process missed days, return with missedHabitIds |
+| GET | `/api/auth/session` | Return the currently logged-in user from the session cookie |
+| POST | `/api/auth/register` | Create a user account and start a session |
+| POST | `/api/auth/login` | Log in and start a session |
+| POST | `/api/auth/logout` | Clear the active session |
+| GET | `/api/state` | Load the current user's full state, process missed days, return with missedHabitIds |
 | POST | `/api/habits` | Create a new habit |
 | PUT | `/api/habits/{id}` | Edit habit (name, target, color) |
 | DELETE | `/api/habits/{id}` | Soft-delete (move to trash) |
@@ -155,9 +163,9 @@ CREATE TABLE IF NOT EXISTS app_state (
 )
 ```
 
-- **One row, one JSON blob** — the entire `AppState` (habits + deletedHabits + metadata) is serialized as JSON
+- **One row, one JSON blob** — the entire `AppState` (users, sessions, and per-user habit data) is serialized as JSON
 - **Thread-safe** — all reads/writes wrapped in a C# `lock` statement
-- **Why this pattern?** Mirrors the localStorage approach from the original frontend-only version. Zero schema migrations, trivial to reason about, and perfectly adequate for a single-user app
+- **Why this pattern?** Keeps authentication and per-user habit data in one simple persisted document without introducing relational schema migrations
 
 ---
 
@@ -231,7 +239,7 @@ Habit {
 
 | Decision | Rationale |
 |---|---|
-| JSON blob in SQLite | Mirrors localStorage pattern — zero-migration upgrade path from frontend-only to full-stack |
+| JSON blob in SQLite | Keeps users, sessions, and per-user state in one simple persisted document |
 | Server as source of truth | No optimistic updates, no conflict resolution needed — response replaces local state |
 | Fire-and-forget mutations | Keeps hook return signatures synchronous, components don't deal with promises |
 | Business logic in both TS and C# | Frontend logic preserved for message generation; backend logic for data integrity |

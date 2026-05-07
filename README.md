@@ -4,6 +4,12 @@ A gamified habit tracker with humor and consequence. Track daily habits, build s
 
 ## Features
 
+### User Accounts
+- Create an account with username + password credentials
+- Log in to a persistent personal habit workspace
+- Secure session cookie keeps users signed in across refreshes
+- Existing single-user data migrates into the first account that signs up
+
 ### Habit Management
 - Create habits with a custom name, daily target (1-10), and color
 - Edit habit name, daily target, and color at any time
@@ -139,8 +145,9 @@ A gamified habit tracker with humor and consequence. Track daily habits, build s
 - Loading state displayed while fetching initial data from API
 
 ### Backend & Persistence
-- ASP.NET Core 8 Minimal API with 9 REST endpoints
+- ASP.NET Core 8 Minimal API with auth + habit REST endpoints
 - SQLite database with JSON blob storage (single-row `app_state` table)
+- Per-user habit state stored separately behind authenticated sessions
 - Thread-safe database access with lock-based concurrency
 - All business logic ported from TypeScript to C# (streak calc, missed-day detection, stats)
 - Missed days processed server-side on every state load
@@ -171,6 +178,8 @@ docker compose up -d
 ```
 
 The app will be available at **http://localhost:3000**.
+
+Create an account the first time you open the app, then log in to reach your personal habit data.
 
 - Frontend is served by nginx on port 3000
 - API runs internally on port 5000, proxied via nginx at `/api/`

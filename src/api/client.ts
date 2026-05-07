@@ -6,20 +6,68 @@ export interface StateResponse {
   missedHabitIds: string[];
 }
 
+export interface AuthUser {
+  id: string;
+  username: string;
+}
+
+export interface AuthResponse {
+  user: AuthUser;
+}
+
+export class ApiRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+  }
+}
+
+export function isApiRequestError(error: unknown): error is ApiRequestError {
+  return error instanceof ApiRequestError;
+}
+
 const API = '/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, {
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
-  if (!res.ok) throw new Error(`API ${res.status}`);
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null) as { message?: string } | null;
+    throw new ApiRequestError(payload?.message ?? `API ${res.status}`, res.status);
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
   return res.json();
 }
 
 export const api = {
-  getState: () =>
-    request<StateResponse>('/state'),
+  getSession: () => request<AuthResponse>('/auth/session'),
+
+  register: (username: string, password: string) =>
+    request<AuthResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+
+  login: (username: string, password: string) =>
+    request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+
+  logout: () => request<void>('/auth/logout', { method: 'POST' }),
+
+  getState: () => request<StateResponse>('/state'),
 
   addHabit: (name: string, dailyTarget: number, color?: string) =>
     request<StateResponse>('/habits', {

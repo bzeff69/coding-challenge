@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import type { Habit } from '../domain/habits/habit.types';
 import { getMessage } from '../domain/habits/habit.messages';
 import { getTodayDateString } from '../utils/dates';
-import { api, type StateResponse } from '../api/client';
+import { api, isApiRequestError, type StateResponse } from '../api/client';
 
 export interface HabitMessage {
   habitId: string;
@@ -10,48 +10,80 @@ export interface HabitMessage {
   timestamp: number;
 }
 
-export function useHabits() {
+export function useHabits(onUnauthorized: () => void) {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [deletedHabits, setDeletedHabits] = useState<Habit[]>([]);
   const [messages, setMessages] = useState<Record<string, HabitMessage>>({});
   const [missedHabits, setMissedHabits] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
+  const clearState = useCallback(() => {
+    setHabits([]);
+    setDeletedHabits([]);
+    setMessages({});
+    setMissedHabits(new Set());
+  }, []);
+
   const applyState = useCallback((res: StateResponse) => {
     setHabits(res.habits);
     setDeletedHabits(res.deletedHabits);
   }, []);
 
-  // Load initial state from API
+  const handleError = useCallback((error: unknown) => {
+    if (isApiRequestError(error) && error.status === 401) {
+      clearState();
+      onUnauthorized();
+    }
+  }, [clearState, onUnauthorized]);
+
   useEffect(() => {
-    api.getState().then((res) => {
-      applyState(res);
+    let active = true;
 
-      if (res.missedHabitIds.length > 0) {
-        setMissedHabits(new Set(res.missedHabitIds));
-        const newMessages: Record<string, HabitMessage> = {};
-        for (const id of res.missedHabitIds) {
-          const habit = res.habits.find((h) => h.id === id);
-          if (habit) {
-            newMessages[id] = {
-              habitId: id,
-              text: getMessage({
-                category: 'missed',
-                count: 0,
-                dailyTarget: habit.dailyTarget,
-                currentStreak: 0,
-                habitName: habit.name,
-              }),
-              timestamp: Date.now(),
-            };
+    api.getState()
+      .then((res) => {
+        if (!active) return;
+
+        applyState(res);
+
+        if (res.missedHabitIds.length > 0) {
+          setMissedHabits(new Set(res.missedHabitIds));
+          const newMessages: Record<string, HabitMessage> = {};
+          for (const id of res.missedHabitIds) {
+            const habit = res.habits.find((h) => h.id === id);
+            if (habit) {
+              newMessages[id] = {
+                habitId: id,
+                text: getMessage({
+                  category: 'missed',
+                  count: 0,
+                  dailyTarget: habit.dailyTarget,
+                  currentStreak: 0,
+                  habitName: habit.name,
+                }),
+                timestamp: Date.now(),
+              };
+            }
           }
+          setMessages(newMessages);
+        } else {
+          setMissedHabits(new Set());
+          setMessages({});
         }
-        setMessages(newMessages);
-      }
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        handleError(error);
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
 
-      setLoading(false);
-    });
-  }, [applyState]);
+    return () => {
+      active = false;
+    };
+  }, [applyState, clearState, handleError]);
 
   const setMessage = useCallback((habitId: string, text: string) => {
     setMessages((prev) => ({
@@ -62,16 +94,16 @@ export function useHabits() {
 
   const addHabit = useCallback(
     (name: string, dailyTarget: number, color?: string) => {
-      api.addHabit(name, dailyTarget, color).then(applyState).catch(() => {});
+      api.addHabit(name, dailyTarget, color).then(applyState).catch(handleError);
     },
-    [applyState]
+    [applyState, handleError]
   );
 
   const editHabit = useCallback(
     (id: string, name: string, dailyTarget: number, color?: string) => {
-      api.editHabit(id, name, dailyTarget, color).then(applyState).catch(() => {});
+      api.editHabit(id, name, dailyTarget, color).then(applyState).catch(handleError);
     },
-    [applyState]
+    [applyState, handleError]
   );
 
   const deleteHabit = useCallback(
@@ -83,9 +115,9 @@ export function useHabits() {
           delete next[id];
           return next;
         });
-      }).catch(() => {});
+      }).catch(handleError);
     },
-    [applyState]
+    [applyState, handleError]
   );
 
   const increment = useCallback(
@@ -108,9 +140,9 @@ export function useHabits() {
             })
           );
         }
-      }).catch(() => {});
+      }).catch(handleError);
     },
-    [applyState, setMessage]
+    [applyState, handleError, setMessage]
   );
 
   const undo = useCallback(
@@ -132,30 +164,30 @@ export function useHabits() {
             })
           );
         }
-      }).catch(() => {});
+      }).catch(handleError);
     },
-    [applyState, setMessage]
+    [applyState, handleError, setMessage]
   );
 
   const setDayCount = useCallback(
     (id: string, date: string, count: number) => {
-      api.setDayCount(id, date, count).then(applyState).catch(() => {});
+      api.setDayCount(id, date, count).then(applyState).catch(handleError);
     },
-    [applyState]
+    [applyState, handleError]
   );
 
   const restoreHabit = useCallback(
     (id: string) => {
-      api.restoreHabit(id).then(applyState).catch(() => {});
+      api.restoreHabit(id).then(applyState).catch(handleError);
     },
-    [applyState]
+    [applyState, handleError]
   );
 
   const permanentlyDeleteHabit = useCallback(
     (id: string) => {
-      api.permanentlyDeleteHabit(id).then(applyState).catch(() => {});
+      api.permanentlyDeleteHabit(id).then(applyState).catch(handleError);
     },
-    [applyState]
+    [applyState, handleError]
   );
 
   const getTodayCount = useCallback(
