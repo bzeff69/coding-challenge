@@ -89,14 +89,14 @@ export function AuthForm({ onLogin, onRegister }: AuthFormProps) {
             </button>
           </div>
 
-          <h2 className="text-2xl font-bold text-stone-900 dark:text-stone-50 mb-2">
-            {mode === 'login' ? 'Welcome back.' : 'Claim your streak.'}
-          </h2>
-          <p className="text-sm text-stone-500 dark:text-stone-400">
-            {mode === 'login'
-              ? 'Log in to reach your habits, stats, and sarcastic feedback.'
-              : 'Create an account so your habits stay attached to you instead of the void.'}
-          </p>
+            <h2 className="text-2xl font-bold text-stone-900 dark:text-stone-50 mb-2">
+              {mode === 'login' ? 'Welcome back.' : 'Claim your streak.'}
+            </h2>
+            <p className="text-sm text-stone-500 dark:text-stone-400">
+              {mode === 'login'
+                ? 'Log in to access your habits, stats, and sarcastic feedback.'
+                : 'Create an account so your habits stay attached to you instead of the void.'}
+            </p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 sm:p-8">

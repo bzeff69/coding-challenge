@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -137,24 +138,22 @@ app.MapGet("/api/state", (HttpContext http, HabitStore store) =>
 
 app.MapPost("/api/habits", (CreateHabitRequest req, HttpContext http, HabitStore store) =>
 {
-    var auth = RequireUser(http, store, out var state, out var userState);
-    if (auth != null) return auth;
+    if (!TryRequireUser(http, store, out var state, out var userState, out var failure)) return failure;
 
     userState.Habits.Add(HabitLogic.CreateHabit(req.Name, req.DailyTarget, req.Color));
-    store.Save(state!);
+    store.Save(state);
     return Results.Ok(ToResponse(userState));
 });
 
 app.MapPut("/api/habits/{id}", (string id, EditHabitRequest req, HttpContext http, HabitStore store) =>
 {
-    var auth = RequireUser(http, store, out var state, out var userState);
-    if (auth != null) return auth;
+    if (!TryRequireUser(http, store, out var state, out var userState, out var failure)) return failure;
 
     var habit = userState.Habits.Find(h => h.Id == id);
     if (habit != null)
     {
         HabitLogic.Edit(habit, req.Name, req.DailyTarget, req.Color, DateUtils.GetTodayDateString());
-        store.Save(state!);
+        store.Save(state);
     }
 
     return Results.Ok(ToResponse(userState));
@@ -162,15 +161,14 @@ app.MapPut("/api/habits/{id}", (string id, EditHabitRequest req, HttpContext htt
 
 app.MapDelete("/api/habits/{id}", (string id, HttpContext http, HabitStore store) =>
 {
-    var auth = RequireUser(http, store, out var state, out var userState);
-    if (auth != null) return auth;
+    if (!TryRequireUser(http, store, out var state, out var userState, out var failure)) return failure;
 
     var habit = userState.Habits.Find(h => h.Id == id);
     if (habit != null)
     {
         userState.Habits.Remove(habit);
         userState.DeletedHabits.Add(habit);
-        store.Save(state!);
+        store.Save(state);
     }
 
     return Results.Ok(ToResponse(userState));
@@ -178,14 +176,13 @@ app.MapDelete("/api/habits/{id}", (string id, HttpContext http, HabitStore store
 
 app.MapPost("/api/habits/{id}/increment", (string id, HttpContext http, HabitStore store) =>
 {
-    var auth = RequireUser(http, store, out var state, out var userState);
-    if (auth != null) return auth;
+    if (!TryRequireUser(http, store, out var state, out var userState, out var failure)) return failure;
 
     var habit = userState.Habits.Find(h => h.Id == id);
     if (habit != null)
     {
         HabitLogic.Increment(habit, DateUtils.GetTodayDateString());
-        store.Save(state!);
+        store.Save(state);
     }
 
     return Results.Ok(ToResponse(userState));
@@ -193,14 +190,13 @@ app.MapPost("/api/habits/{id}/increment", (string id, HttpContext http, HabitSto
 
 app.MapPost("/api/habits/{id}/undo", (string id, HttpContext http, HabitStore store) =>
 {
-    var auth = RequireUser(http, store, out var state, out var userState);
-    if (auth != null) return auth;
+    if (!TryRequireUser(http, store, out var state, out var userState, out var failure)) return failure;
 
     var habit = userState.Habits.Find(h => h.Id == id);
     if (habit != null)
     {
         HabitLogic.Undo(habit, DateUtils.GetTodayDateString());
-        store.Save(state!);
+        store.Save(state);
     }
 
     return Results.Ok(ToResponse(userState));
@@ -208,14 +204,13 @@ app.MapPost("/api/habits/{id}/undo", (string id, HttpContext http, HabitStore st
 
 app.MapPut("/api/habits/{id}/days/{date}", (string id, string date, SetDayCountRequest req, HttpContext http, HabitStore store) =>
 {
-    var auth = RequireUser(http, store, out var state, out var userState);
-    if (auth != null) return auth;
+    if (!TryRequireUser(http, store, out var state, out var userState, out var failure)) return failure;
 
     var habit = userState.Habits.Find(h => h.Id == id);
     if (habit != null)
     {
         HabitLogic.SetDayCount(habit, date, req.Count, DateUtils.GetTodayDateString());
-        store.Save(state!);
+        store.Save(state);
     }
 
     return Results.Ok(ToResponse(userState));
@@ -223,15 +218,14 @@ app.MapPut("/api/habits/{id}/days/{date}", (string id, string date, SetDayCountR
 
 app.MapPost("/api/habits/{id}/restore", (string id, HttpContext http, HabitStore store) =>
 {
-    var auth = RequireUser(http, store, out var state, out var userState);
-    if (auth != null) return auth;
+    if (!TryRequireUser(http, store, out var state, out var userState, out var failure)) return failure;
 
     var habit = userState.DeletedHabits.Find(h => h.Id == id);
     if (habit != null)
     {
         userState.DeletedHabits.Remove(habit);
         userState.Habits.Add(habit);
-        store.Save(state!);
+        store.Save(state);
     }
 
     return Results.Ok(ToResponse(userState));
@@ -239,11 +233,10 @@ app.MapPost("/api/habits/{id}/restore", (string id, HttpContext http, HabitStore
 
 app.MapDelete("/api/habits/{id}/permanent", (string id, HttpContext http, HabitStore store) =>
 {
-    var auth = RequireUser(http, store, out var state, out var userState);
-    if (auth != null) return auth;
+    if (!TryRequireUser(http, store, out var state, out var userState, out var failure)) return failure;
 
     userState.DeletedHabits = userState.DeletedHabits.Where(h => h.Id != id).ToList();
-    store.Save(state!);
+    store.Save(state);
     return Results.Ok(ToResponse(userState));
 });
 
@@ -266,7 +259,12 @@ string? ValidateCredentials(string username, string password)
     return null;
 }
 
-IResult? RequireUser(HttpContext http, HabitStore store, out AppState? state, out UserState userState)
+bool TryRequireUser(
+    HttpContext http,
+    HabitStore store,
+    [NotNullWhen(true)] out AppState? state,
+    out UserState userState,
+    [NotNullWhen(false)] out IResult? failure)
 {
     state = store.Load();
     var dirty = PruneExpiredSessions(state);
@@ -275,11 +273,14 @@ IResult? RequireUser(HttpContext http, HabitStore store, out AppState? state, ou
     {
         if (dirty) store.Save(state);
         userState = new UserState();
-        return Results.Unauthorized();
+        failure = Results.Unauthorized();
+        state = null;
+        return false;
     }
 
     userState = GetOrCreateUserState(state, user.Id);
-    return null;
+    failure = null;
+    return true;
 }
 
 UserAccount? GetAuthenticatedUser(AppState state, HttpContext http)
@@ -298,11 +299,12 @@ bool PruneExpiredSessions(AppState state)
 {
     var now = DateTime.UtcNow;
     var originalCount = state.Sessions.Count;
+    var userIds = state.Users.Select(u => u.Id).ToHashSet();
     state.Sessions = state.Sessions
         .Where(session =>
         {
             if (!DateTime.TryParse(session.ExpiresAt, out var expiresAt)) return false;
-            return expiresAt.ToUniversalTime() > now && state.Users.Any(u => u.Id == session.UserId);
+            return expiresAt.ToUniversalTime() > now && userIds.Contains(session.UserId);
         })
         .ToList();
 
