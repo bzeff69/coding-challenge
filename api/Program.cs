@@ -263,7 +263,7 @@ bool TryRequireUser(
     HttpContext http,
     HabitStore store,
     [NotNullWhen(true)] out AppState? state,
-    out UserState userState,
+    [NotNullWhen(true)] out UserState? userState,
     [NotNullWhen(false)] out IResult? failure)
 {
     state = store.Load();
@@ -272,7 +272,7 @@ bool TryRequireUser(
     if (user == null)
     {
         if (dirty) store.Save(state);
-        userState = new UserState();
+        userState = null;
         failure = Results.Unauthorized();
         state = null;
         return false;
